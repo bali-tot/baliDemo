@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BALI — Algorithm 2: ToT-Based Loop Invariant Synthesis</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #f4f5f7; color: #222; padding: 12px; }
+
+        .header { text-align: center; margin-bottom: 10px; }
+        .header h1 { font-size: 19px; color: #b71c1c; }
+        .header p  { font-size: 11.5px; color: #777; margin-top: 3px; }
+
+        /* Controls */
+        .ctrl {
+            display: flex; justify-content: center; align-items: center; gap: 12px;
+            background: #fff; padding: 7px 18px; border-radius: 8px;
+            box-shadow: 0 1px 4px rgba(0,0,0,.07); margin-bottom: 10px;
+        }
+        button { padding: 6px 16px; font-size: 13px; cursor: pointer; border: none; border-radius: 5px;
+                 background: #b71c1c; color: #fff; font-weight: bold; transition: .12s; }
+        button:hover:not(:disabled) { background: #8e1515; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        .brst { background: #546e7a; } .brst:hover:not(:disabled) { background: #37474f; }
+        .sctr { font-size: 13px; font-weight: bold; min-width: 84px; text-align: center; }
+        .pill { padding: 3px 10px; border-radius: 10px; font-size: 11px; font-weight: bold; color: #fff; }
+
+        /* Layout */
+        .main { display: flex; gap: 9px; max-width: 1540px; margin: 0 auto; }
+        .panel { background: #fff; border-radius: 8px; padding: 12px;
+                 box-shadow: 0 1px 4px rgba(0,0,0,.06); display: flex; flex-direction: column; }
+        .panel h2 { text-align: center; font-size: 12.5px; color: #b71c1c; margin-bottom: 7px; }
+
+        .col-algo  { flex: 0 0 330px; }
+        .col-tree  { flex: 1; min-width: 0; }
+        .col-state { flex: 0 0 370px; }
+
+        /* ── ALGORITHM PANEL ── */
+        .algo-io { font-size: 10.5px; color: #555; margin-bottom: 5px; line-height: 1.5;
+                   font-family: 'Times New Roman', serif; font-style: italic; }
+        .aline { display: flex; gap: 5px; padding: 2px 5px; border-radius: 3px;
+                 font-size: 12px; line-height: 1.6; font-family: 'Times New Roman', Georgia, serif; }
+        .aline.on { background: #fff9c4; border-left: 3px solid #f9a825; }
+        .aline .ln { color: #bbb; font-size: 10px; min-width: 14px; text-align: right;
+                     font-family: monospace; margin-top: 2px; }
+        .aline .tx { flex: 1; }
+        .kw { color: #b71c1c; font-weight: bold; }
+        .fn { color: #1565c0; }
+        hr.sep { border: none; border-top: 1px solid #eee; margin: 3px 0; }
+
+        /* ── TREE PANEL ── */
+        canvas { display: block; margin: 0 auto; }
+        .legend { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;
+                  margin-top: 5px; font-size: 10px; color: #666; }
+        .legi { display: flex; align-items: center; gap: 3px; }
+        .legs { width: 11px; height: 11px; border-radius: 3px; border: 1.5px solid; }
+
+        /* ── STATE PANEL ── */
+        .stitle { font-size: 10.5px; color: #b71c1c; font-weight: bold; margin-bottom: 3px;
+                  border-bottom: 1px solid #eee; padding-bottom: 2px; }
+        .prog { background: #263238; color: #cfd8dc; padding: 8px; border-radius: 6px;
+                font-family: Consolas, monospace; font-size: 10.5px; line-height: 1.55;
+                white-space: pre; margin-bottom: 7px; }
+        .phi-pills { display: flex; flex-wrap: wrap; gap: 3px; margin-bottom: 7px; }
+        .ppill { padding: 2px 8px; border-radius: 8px; font-size: 10px; font-weight: bold; border: 1.5px solid; }
+
+        .card { background: #fafafa; border: 1.5px solid #ddd; border-radius: 6px;
+                padding: 6px 8px; margin-bottom: 4px; font-size: 11px; }
+        .card.act { border-color: #1565c0; background: #e3f2fd; }
+        .card.ok  { border-color: #2e7d32; background: #e8f5e9; }
+        .card.bad { border-color: #c62828; background: #ffebee; }
+        .card.dim { border-color: #ddd; background: #f9f9f9; opacity: .5; }
+        .card.ref { border-color: #e65100; background: #fff3e0; }
+        .chdr { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px; }
+        .cid { font-weight: bold; font-size: 10.5px; }
+        .csc { font-size: 10px; }
+        .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; vertical-align: middle; margin-left: 2px; }
+        .ibadge { font-size: 9px; padding: 1px 5px; border-radius: 5px; font-weight: bold; color: #fff; }
+        .irow { font-family: monospace; font-size: 10px; line-height: 1.4; }
+        .ilbl { font-weight: bold; margin-right: 3px; }
+        .bk { color: #c62828; text-decoration: line-through; }
+        .rf { color: #e65100; font-weight: bold; }
+        .cnote { font-size: 9.5px; color: #777; margin-top: 2px; }
+        .cdnf  { font-size: 9.5px; color: #555; margin-top: 2px; font-family: monospace; }
+
+        .nar { background: #fffde7; border-left: 3px solid #f9a825; padding: 8px 10px;
+               border-radius: 0 6px 6px 0; font-size: 11.5px; line-height: 1.55; margin-top: 6px; }
+        .nar b { color: #b71c1c; }
+        .nar code { background: #eee; padding: 0 3px; border-radius: 3px; font-size: 10px; }
+        .nar .ok { color: #2e7d32; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>BALI &mdash; Algorithm 2: ToT-Based Loop Invariant Synthesis and Refinement</h1>
+    <p>Real execution trace on a multiphase benchmark &nbsp;|&nbsp; &#8592; &#8594; Arrow Keys or Buttons</p>
+</div>
+
+<div class="ctrl">
+    <button class="brst" onclick="go(0)">&#8634; Reset</button>
+    <button id="bp" onclick="go(cur-1)">&#9664; Prev</button>
+    <div class="sctr">Step <span id="sn">1</span>/<span id="st">1</span></div>
+    <button id="bn" onclick="go(cur+1)">Next &#9654;</button>
+    <span id="pp" class="pill" style="background:#546e7a">Init</span>
+    <button onclick="autoPlay()" id="ba" style="background:#e65100;font-size:11px;padding:5px 10px">&#9654; Auto</button>
+</div>
+
+<div class="main">
+
+<!-- ════ ALGORITHM ════ -->
+<div class="col-algo panel">
+    <h2>Algorithm 2</h2>
+    <div class="algo-io">
+        <b>Require:</b> &Phi;={&phi;<sub>1</sub>,&hellip;,&phi;<sub>D</sub>}, program <i>x</i>, beam <i>k</i>, timeout <i>T</i><br>
+        <b>Ensure:</b> Invariant <i>I</i> or <span style="font-variant:small-caps">Timeout</span>
+    </div>
+    <div id="algo"></div>
+</div>
+
+<!-- ════ TREE ════ -->
+<div class="col-tree panel">
+    <h2>Search Tree &nbsp;(beam width <i>k</i> = 5, showing top-3 per layer for clarity)</h2>
+    <canvas id="cv" width="700" height="480"></canvas>
+    <div class="legend">
+        <div class="legi"><div class="legs" style="background:#e3f2fd;border-color:#1565c0"></div> Active</div>
+        <div class="legi"><div class="legs" style="background:#e8f5e9;border-color:#2e7d32"></div> Verified</div>
+        <div class="legi"><div class="legs" style="background:#ffebee;border-color:#c62828"></div> Failed</div>
+        <div class="legi"><div class="legs" style="background:#f5f5f5;border-color:#ccc"></div> Pruned</div>
+        <div class="legi"><div class="legs" style="background:#fff3e0;border-color:#e65100"></div> Refined</div>
+    </div>
+</div>
+
+<!-- ════ STATE ════ -->
+<div class="col-state panel">
+    <div class="stitle">Benchmark Program (Multiphase #1)</div>
+    <div class="prog"><span style="color:#80cbc4">// pre: x=0, y=5000</span>
+<span style="color:#ef9a9a">while</span>(unknown()) {
+  <span style="color:#ef9a9a">if</span> (x >= 5000)        <span style="color:#90caf9">// &phi;<sub>1</sub>: B &and; (x&ge;5000)</span>
+    y = y + 1;
+                         <span style="color:#ce93d8">// &phi;<sub>2</sub>: B &and; (x&lt;5000)</span>
+  x = x + 1;
+}
+<span style="color:#a5d6a7">// &phi;<sub>3</sub>: &not;B (exit)</span>
+<span style="color:#80cbc4">// post: x==10000 &rArr; y==x</span></div>
+
+    <div class="stitle">Loop Branch Sequences (&Phi;)</div>
+    <div id="pills" class="phi-pills"></div>
+
+    <div class="stitle">Beam Candidates (<i>Y</i>)</div>
+    <div id="cards" style="max-height:240px;overflow-y:auto"></div>
+
+    <div class="nar" id="nar">Press <b>Next</b> or <b>&rarr;</b> to begin.</div>
+</div>
+
+</div><!-- .main -->
+
+<script>
+// ═══════════════════════════════════════════
+// PSEUDOCODE  (Algorithm 2, verbatim)
+// ═══════════════════════════════════════════
+const A = [
+  {n:1,  t:'<i>Y</i> &larr; { [ ] }'},
+  {n:2,  t:'<span class="kw">for</span> <i>i</i> = 1 <span class="kw">to</span> <i>D</i> <span class="kw">do</span>'},
+  {n:3,  t:'&nbsp;&nbsp;<i>P<sub>i</sub></i> &larr; <span class="fn">GenerateCandidates</span>(<i>x</i>, <i>&phi;<sub>i</sub></i>)'},
+  {n:4,  t:'&nbsp;&nbsp;<i>Y\'</i> &larr; <span class="fn">Expand</span>(<i>Y</i>, <i>P<sub>i</sub></i>)'},
+  {n:5,  t:'&nbsp;&nbsp;<i>V</i> &larr; <span class="fn">Score</span>(<i>x</i>, <i>Y\'</i>)'},
+  {n:6,  t:'&nbsp;&nbsp;<i>Y</i> &larr; <span class="fn">TopK</span>(<i>Y\'</i>, <i>V</i>, <i>k</i>)'},
+  {n:7,  t:'<span class="kw">end for</span>'},
+  {n:-1, t:''},
+  {n:8,  t:'<i>I</i> &larr; <span class="fn">CheckCandidates</span>(<i>Y</i>)'},
+  {n:9,  t:'<span class="kw">if</span> <i>I</i> &ne; <span style="font-variant:small-caps">None</span> <span class="kw">then return</span> <i>I</i>'},
+  {n:-1, t:''},
+  {n:10, t:'<span class="kw">while</span> not timeout(<i>T</i>) <span class="kw">do</span>'},
+  {n:11, t:'&nbsp;&nbsp;<i>y*</i> &larr; <span class="fn">SelectBest</span>(<i>Y</i>)'},
+  {n:12, t:'&nbsp;&nbsp;(<i>CE, idx, pos, broken</i>) &larr; <span class="fn">GetFailureInfo</span>(<i>y*</i>)'},
+  {n:13, t:'&nbsp;&nbsp;<span class="kw">if</span> <span class="fn">IsAmbiguous</span>(<i>idx, pos</i>) <span class="kw">then</span>'},
+  {n:14, t:'&nbsp;&nbsp;&nbsp;&nbsp;<i>idx</i> &larr; <span class="fn">JudgeBranch</span>(<i>x, CE, idx</i>)'},
+  {n:15, t:'&nbsp;&nbsp;<i>R</i> &larr; <span class="fn">RefineBranch</span>(<i>x, y*, CE, idx, pos, broken</i>)'},
+  {n:16, t:'&nbsp;&nbsp;<i>Y</i> &larr; <span class="fn">Update</span>(<i>Y, y*, idx, R</i>)'},
+  {n:17, t:'&nbsp;&nbsp;<i>I</i> &larr; <span class="fn">CheckCandidates</span>(<i>Y</i>)'},
+  {n:18, t:'&nbsp;&nbsp;<span class="kw">if</span> <i>I</i> &ne; <span style="font-variant:small-caps">None</span> <span class="kw">then return</span> <i>I</i>'},
+  {n:19, t:'<span class="kw">end while</span>'},
+  {n:20, t:'<span class="kw">return</span> <span style="font-variant:small-caps">Timeout</span>'},
+];
+
+// ═══════════════════════════════════════════
+// PHI DEFINITIONS
+// ═══════════════════════════════════════════
+const PHI = [
+  {id:'phi1', lbl:'&phi;<sub>1</sub>: B &and; x&ge;5000', c:'#1565c0', bg:'#e3f2fd'},
+  {id:'phi2', lbl:'&phi;<sub>2</sub>: B &and; x&lt;5000',  c:'#7b1fa2', bg:'#f3e5f5'},
+  {id:'phi3', lbl:'&phi;<sub>3</sub>: &not;B (exit)',       c:'#2e7d32', bg:'#e8f5e9'},
+];
+
+// ═══════════════════════════════════════════
+// STEP DATA  (real execution trace from 1.out)
+// ═══════════════════════════════════════════
+// mk(id, parts, status, score, extra)
+// pt(phi, inv, flags)   flags: {broken, refined}
+
+function mk(id,parts,st,sc,ex){return{id,parts,st,sc:sc??null,...(ex||{})};}
+function pt(phi,inv,fl){return{phi,inv,...(fl||{})};}
+
+const S=[];
+function s(phase,pc,ln,nar,beam,abr,te){S.push({phase,pc,ln,nar,beam,abr:abr??-1,te:te||{}});}
+
+// ── 0: Init ──────────────────────────────
+s('Init','#546e7a',1,
+  '<b>Line 1</b>: Initialise beam <i>Y</i> = { [] }. One empty partial candidate — the root of the search tree.',
+  [mk('root',[],'act')], -1);
+
+// ── Round i=1: φ1 (B ∧ x≥5000) ─────────
+s('Generation','#1565c0',2,
+  '<b>Line 2</b>: Start <b>for</b> loop, round <b>i=1</b> of D=3. Current branch sequence: <b>&phi;<sub>1</sub></b> (B &and; x&ge;5000). This is the "high phase" where both x and y increment.',
+  [mk('root',[],'act')], 0);
+
+s('Generation','#1565c0',3,
+  '<b>Line 3 — GenerateCandidates(x, &phi;<sub>1</sub>)</b>: The LLM propose prompt receives the program and the branch guard <code>unknown() &amp;&amp; x&ge;5000</code>. It generates 5 conjunctive candidates for this branch <i>only</i>. Other branches are not mentioned.',
+  [mk('root',[],'act')], 0,
+  {gen:['x>=0 && x<=10000 && y==x+5000',
+        'x>=0 && x<=10000 && y==5000+(x-5000) && (x>=5000||y==5000)',
+        'x>=0 && x<=10000 && y>=5000 && y<=10001 && y==x+5000',
+        'x>=0 && x<=10000 && y>=5000 && (y==5000||(x>=5000&&y==x+1))',
+        'x>=0 && y==x+5000']});
+
+s('Generation','#1565c0',4,
+  '<b>Line 4 — Expand(Y, P<sub>1</sub>)</b>: |Y|=1 &times; 5 proposals = 5 expanded partial candidates, each holding one &phi;<sub>1</sub> sub-invariant.',
+  [mk('y0',[pt('phi1','x>=0 && x<=10000 && y==x+5000')],'act'),
+   mk('y1',[pt('phi1','x>=0 && x<=10000 && y==5000+(x-5000)&&(x>=5000||y==5000)')],'act'),
+   mk('y2',[pt('phi1','x>=0 && x<=10000 && y>=5000 && y<=10001 && y==x+5000')],'act'),
+   mk('y3',[pt('phi1','x>=0 && x<=10000 && y>=5000 && (y==5000||(x>=5000&&y==x+1))')],'act'),
+   mk('y4',[pt('phi1','x>=0 && y==x+5000')],'act')], 0);
+
+s('Generation','#1565c0',5,
+  '<b>Line 5 — Score(x, Y\')</b>: Value prompt evaluates each partial invariant as a whole. Score = mean of 3 LLM samples. Real scores from execution log: 10.0, 9.3, 6.7, 8.7, 6.3.',
+  [mk('y0',[pt('phi1','x>=0 && x<=10000 && y==x+5000')],'act',10.0),
+   mk('y1',[pt('phi1','x>=0 && x<=10000 && y==5000+(x-5000)&&(x>=5000||y==5000)')],'act',9.3),
+   mk('y2',[pt('phi1','x>=0 && x<=10000 && y>=5000 && y<=10001 && y==x+5000')],'act',8.7),
+   mk('y3',[pt('phi1','x>=0 && x<=10000 && y>=5000 && (y==5000||(x>=5000&&y==x+1))')],'act',6.7),
+   mk('y4',[pt('phi1','x>=0 && y==x+5000')],'act',6.3)], 0);
+
+s('Generation','#1565c0',6,
+  '<b>Line 6 — TopK(Y\', V, k=5)</b>: All 5 survive (k=5). At round 2 and 3, expansion creates 25 candidates, so pruning becomes significant.',
+  [mk('y0',[pt('phi1','x>=0 && x<=10000 && y==x+5000')],'act',10.0),
+   mk('y1',[pt('phi1','x>=0 && x<=10000 && y==5000+(x-5000)&&(x>=5000||y==5000)')],'act',9.3),
+   mk('y2',[pt('phi1','x>=0 && x<=10000 && y>=5000 && y<=10001 && y==x+5000')],'act',8.7),
+   mk('y3',[pt('phi1','x>=0 && x<=10000 && y>=5000 && (y==5000||(x>=5000&&y==x+1))')],'act',6.7),
+   mk('y4',[pt('phi1','x>=0 && y==x+5000')],'act',6.3)], 0);
+
+// ── Round i=2: φ2 ────────────────────────
+s('Generation','#7b1fa2',2,
+  '<b>Line 2</b>: Round <b>i=2</b>. Current branch: <b>&phi;<sub>2</sub></b> (B &and; x&lt;5000). This is the "low phase" where only x increments; y stays at 5000.',
+  [mk('y0',[pt('phi1','x>=0 && x<=10000 && y==x+5000')],'act',10.0),
+   mk('y1',[pt('phi1','x>=0 && x<=10000 && y==5000+(x-5000)&&...')],'act',9.3),
+   mk('y2',[pt('phi1','x>=0 && x<=10000 && y>=5000 && y<=10001 && y==x+5000')],'act',8.7)], 1);
+
+s('Generation','#7b1fa2',3,
+  '<b>Line 3 — GenerateCandidates(x, &phi;<sub>2</sub>)</b>: Propose prompt gets guard <code>unknown() &amp;&amp; x&lt;5000</code>. It does <i>not</i> see &phi;<sub>1</sub>&rsquo;s candidates. Generates 5 candidates independently for this branch.',
+  [mk('y0',[pt('phi1','x>=0 && x<=10000 && y==x+5000')],'act',10.0),
+   mk('y1',[pt('phi1','x>=0 && ...')],'act',9.3)], 1,
+  {gen:['x>=5000 && x<=10000 && y==x+5000',
+        'x>=0 && x<=10000 && y==x && x>=5000',
+        'x>=5000 && x<=10000 && y==x',
+        'x>=5000 && x<=10000 && y>=5000 && y<=10001 && y==x+5000',
+        'x>=5000 && x<=10000 && y==x+5000']});
+
+s('Generation','#7b1fa2',6,
+  '<b>Lines 4-6 — Expand → Score → TopK</b>: 5 beams &times; 5 proposals = 25 expanded candidates. Value prompt scores each pair (&phi;<sub>1</sub>, &phi;<sub>2</sub>) jointly. Real top scores: 10.0, 10.0, 10.0, 10.0, 9.7. <b>20 pruned.</b>',
+  [mk('c0',[pt('phi1','x>=0 && x<=10000 && y==x+5000'),
+            pt('phi2','x>=5000 && x<=10000 && y==x+5000')],'act',10.0),
+   mk('c1',[pt('phi1','x>=0 && x<=10000 && y==5000+(x-5000)&&(...)'),
+            pt('phi2','x>=0 && x<=10000 && y==x && x>=5000')],'act',10.0),
+   mk('c2',[pt('phi1','x>=0 && x<=10000 && y==5000+(x-5000)&&(...)'),
+            pt('phi2','x>=5000 && x<=10000 && y==x')],'act',10.0),
+   mk('c3',[pt('phi1','x>=0 && x<=10000 && y>=5000 && y<=10001 && y==x+5000'),
+            pt('phi2','x>=5000 && x<=10000 && y>=5000 && ... && y==x+5000')],'act',10.0),
+   mk('c4',[pt('phi1','x>=0 && x<=10000 && y>=5000 && y<=10001 && y==x+5000'),
+            pt('phi2','x>=5000 && x<=10000 && y==x+5000')],'act',9.7)], 1);
+
+// ── Round i=3: φ3 ────────────────────────
+s('Generation','#2e7d32',2,
+  '<b>Line 2</b>: Round <b>i=3</b> (final). Branch: <b>&phi;<sub>3</sub></b> (&not;B, exit). After this round each candidate covers all D=3 branch sequences.',
+  [mk('c0',[pt('phi1','y==x+5000'), pt('phi2','y==x+5000')],'act',10.0),
+   mk('c1',[pt('phi1','y==5000+(x-5000)&&(...)'), pt('phi2','y==x && x>=5000')],'act',10.0),
+   mk('c2',[pt('phi1','y==5000+(x-5000)&&(...)'), pt('phi2','y==x (x>=5000)')],'act',10.0)], 2);
+
+s('Generation','#2e7d32',6,
+  '<b>Lines 3-6 — GenerateCandidates → Expand → Score → TopK</b>: 25 expanded &rarr; top-5 complete candidates. Real top scores: 10.0 &times;8, 9.7. Each is a full path&rarr;invariant map.',
+  [mk('c0',[pt('phi1','x>=0&&x<=10000&&y==x+5000'),
+            pt('phi2','x>=5000&&x<=10000&&y==x+5000'),
+            pt('phi3','x>=0&&x<=5000&&y==x+5000')],'act',10.0),
+   mk('c1',[pt('phi1','x>=0&&x<=10000&&y==x+5000'),
+            pt('phi2','x>=5000&&x<=10000&&y==x+5000'),
+            pt('phi3','x>=0&&x<5000&&y==x+5000')],'act',10.0),
+   mk('c2',[pt('phi1','x>=0&&x<=10000&&y==5000+(x-5000)&&(...)'),
+            pt('phi2','x>=0&&x<=10000&&y==x&&x>=5000'),
+            pt('phi3','x>=0&&x<=10000&&y==5000&&x<5000')],'act',10.0)], 2);
+
+s('Generation','#2e7d32',7,
+  '<b>Line 7 — end for</b>: Generation complete. 5 complete candidates survive.',
+  [mk('c0',[pt('phi1','x>=0&&x<=10000&&y==x+5000'),
+            pt('phi2','x>=5000&&x<=10000&&y==x+5000'),
+            pt('phi3','x>=0&&x<=5000&&y==x+5000')],'act',10.0),
+   mk('c1',[pt('phi1','x>=0&&x<=10000&&y==x+5000'),
+            pt('phi2','x>=5000&&x<=10000&&y==x+5000'),
+            pt('phi3','x>=0&&x<5000&&y==x+5000')],'act',10.0),
+   mk('c2',[pt('phi1','x>=0&&x<=10000&&y==5000+(x-5000)&&(...)'),
+            pt('phi2','x>=0&&x<=10000&&y==x&&x>=5000'),
+            pt('phi3','x>=0&&x<=10000&&y==5000&&x<5000')],'act',10.0)], -1);
+
+// ── Verification ─────────────────────────
+s('Verification','#e65100',8,
+  '<b>Line 8 — CheckCandidates(Y)</b>: Compose each candidate into a global DNF via &or;. c0 becomes: <code>(x>=0&&x<=10000&&y==x+5000) || (x>=5000&&...&&y==x+5000) || (x>=0&&x<=5000&&y==x+5000)</code>. Submit to Z3.',
+  [mk('c0',[pt('phi1','x>=0&&x<=10000&&y==x+5000'),
+            pt('phi2','x>=5000&&x<=10000&&y==x+5000'),
+            pt('phi3','x>=0&&x<=5000&&y==x+5000')],'act',null,
+    {dnf:'DNF: (φ₁) || (φ₂) || (φ₃) → Z3 checking…'}),
+   mk('c1',[pt('phi1','…'),pt('phi2','…'),pt('phi3','…')],'act'),
+   mk('c2',[pt('phi1','…'),pt('phi2','…'),pt('phi3','…')],'act')], -1);
+
+s('Verification','#c62828',9,
+  '<b>Line 9</b>: <i>I</i> = None — all candidates fail. <b>Root cause:</b> <code>y==x+5000</code> breaks Preservation for &phi;<sub>2</sub>. In the low phase (x&lt;5000), only x increments; y stays at 5000. After one iteration: x becomes 1, y stays 5000, but <code>y==x+5000</code> demands y=5001. Contradiction.',
+  [mk('c0',[pt('phi1','y==x+5000'), pt('phi2','y==x+5000'), pt('phi3','y==x+5000')],'bad',null,
+    {dnf:'FAIL Preservation — CE: {x=0→1, y=5000}'}),
+   mk('c1',[pt('phi1','…'), pt('phi2','y==x+5000'), pt('phi3','…')],'bad',null,
+    {dnf:'FAIL Preservation (similar CE)'}),
+   mk('c2',[pt('phi1','…'), pt('phi2','y==x&&x>=5000'), pt('phi3','y==5000&&x<5000')],'bad',null,
+    {dnf:'FAIL Preservation — CE: {x=4999→5000}'})], -1);
+
+// ── Refinement ───────────────────────────
+s('Refinement','#e65100',11,
+  '<b>Line 11 — SelectBest(Y)</b>: Rank candidates by number of passing Hoare checks (Preserv > Term > Init). Candidate c2 — which already has the right shape <code>y==5000</code> for the low phase and <code>y==x</code> for the high phase — passes the most checks. Selected as <i>y*</i>.',
+  [mk('c2',[pt('phi1','x>=0&&x<=10000&&y==5000+(x-5000)&&(x>=5000||y==5000)'),
+            pt('phi2','x>=0&&x<=10000&&y==x&&x>=5000'),
+            pt('phi3','x>=0&&x<=10000&&y==5000&&x<5000')],'act',null,{dnf:'y* ← selected for refinement'}),
+   mk('c0',[pt('phi1','y==x+5000'), pt('phi2','y==x+5000'), pt('phi3','y==x+5000')],'bad'),
+   mk('c1',[pt('phi1','y==x+5000'), pt('phi2','y==x+5000'), pt('phi3','y==x+5000')],'bad')], -1);
+
+s('Refinement','#e65100',12,
+  '<b>Line 12 — GetFailureInfo(y*)</b>: Z3 CE = {x=4999→5000, y=5000}. Pre-state: &phi;<sub>2</sub> holds (x=4999&lt;5000). Post-state: &phi;<sub>1</sub> holds (x=5000&ge;5000). Different branches &rarr; ambiguous. <i>broken</i> = <code>"y==x&&x>=5000"</code> (post-state invariant violated: y=5000&ne;x=5000 actually... but the entry to &phi;<sub>1</sub> requires stronger relation).',
+  [mk('c2',[pt('phi1','x>=0&&x<=10000&&y==5000+(x-5000)&&(x>=5000||y==5000)'),
+            pt('phi2','x>=0&&x<=10000&&y==x&&x>=5000',{broken:'y==x&&x>=5000'}),
+            pt('phi3','x>=0&&x<=10000&&y==5000&&x<5000')],'act',null,
+    {dnf:'CE={x:4999→5000, y:5000}, idx ambiguous (φ₂→φ₁)'}),
+  ], 1);
+
+s('Refinement','#e65100',13,
+  '<b>Line 13 — IsAmbiguous(idx, pos)</b>: Yes — pre-state is in &phi;<sub>2</sub>, post-state in &phi;<sub>1</sub>. We must call <b>JudgeBranch</b> to decide which branch to refine.',
+  [mk('c2',[pt('phi1','x>=0&&x<=10000&&y==5000+(x-5000)&&(...)'),
+            pt('phi2','x>=0&&x<=10000&&y==x&&x>=5000',{broken:'y==x'}),
+            pt('phi3','x>=0&&x<=10000&&y==5000&&x<5000')],'act',null,
+    {dnf:'Pre-state: φ₂ (x=4999)  Post-state: φ₁ (x=5000) → ambiguous!'})], 1);
+
+s('Refinement','#e65100',14,
+  '<b>Line 14 — JudgeBranch(x, CE, idx)</b>: Judge prompt asks the LLM: "Is x=4999, y=5000 reachable?" Answer: <b>YES</b> (reachable: x starts at 0, increments, reaches 4999 with y=5000). Therefore the <i>post-state branch</i> (&phi;<sub>1</sub>) is selected for refinement — its invariant fails to be maintained after the transition.',
+  [mk('c2',[pt('phi1','x>=0&&x<=10000&&y==5000+(x-5000)&&(x>=5000||y==5000)'),
+            pt('phi2','x>=0&&x<=10000&&y==x&&x>=5000'),
+            pt('phi3','x>=0&&x<=10000&&y==5000&&x<5000')],'act',null,
+    {dnf:'Judge: YES → refine φ₁ (post-state branch)'})], 0);
+
+s('Refinement','#e65100',15,
+  '<b>Line 15 — RefineBranch(…, idx=&phi;<sub>1</sub>)</b>: Refine prompt gives the LLM: program, CE, &phi;<sub>1</sub>&rsquo;s guard, position=Preservation, previous candidate, broken term. LLM generates 5 refined candidates for &phi;<sub>1</sub> <i>only</i>. Real output: candidates trimming the overly complex formula toward <code>x>=0&&x<5000&&y==5000</code>.',
+  [mk('c2r',[pt('phi1','x>=0&&x<5000&&y==5000',{refined:true}),
+             pt('phi2','x>=0&&x<=10000&&y==x&&x>=5000'),
+             pt('phi3','x>=0&&x<=10000&&y==5000&&x<5000')],'ref',null,
+    {dnf:'φ₁ refined — φ₂, φ₃ unchanged'})], 0);
+
+s('Refinement','#e65100',16,
+  '<b>Line 16 — Update(Y, y*, idx, R)</b>: Replace &phi;<sub>1</sub>&rsquo;s sub-invariant in <i>y*</i> with each refinement. Other branches (&phi;<sub>2</sub>, &phi;<sub>3</sub>) are <b>preserved exactly</b>. This is the key advantage over global refinement — no regression risk.',
+  [mk('c2r',[pt('phi1','x>=0&&x<5000&&y==5000'),
+             pt('phi2','x>=5000&&y==x'),
+             pt('phi3','x>=0&&x<5000&&y==5000')],'ref',null)], -1);
+
+s('Refinement','#2e7d32',17,
+  '<b>Line 17 — CheckCandidates(Y)</b>: Compose refined candidate: <code>(x>=0&&x<5000&&y==5000) || (x>=5000&&y==x) || (x>=0&&x<5000&&y==5000)</code>. Z3: Init &#10003;, Preservation &#10003;, Termination &#10003;.',
+  [mk('c2f',[pt('phi1','x>=0&&x<5000&&y==5000'),
+             pt('phi2','x>=5000&&y==x'),
+             pt('phi3','x>=0&&x<5000&&y==5000')],'ok',null,
+    {dnf:'(x>=0&&x<5000&&y==5000)||(x>=5000&&y==x)||(x>=0&&x<5000&&y==5000)'})], -1);
+
+s('Refinement','#2e7d32',18,
+  '<b>Line 18</b>: <i>I</i> &ne; None. <span class="ok">&#10003; Valid invariant found!</span><br><br><b>Result:</b> <code>(x&lt;5000 &and; y=5000) &or; (x&ge;5000 &and; y=x)</code><br><br>Interpretation: in the low phase (x&lt;5000) y stays at 5000; in the high phase (x&ge;5000) y tracks x. Together they prove <code>x=10000 &rArr; y=10000=x</code>. <br><br>Total: 60 LLM queries, ~75 seconds.',
+  [mk('VALID',[pt('phi1','x>=0&&x<5000&&y==5000'),
+               pt('phi2','x>=5000&&y==x'),
+               pt('phi3','x>=0&&x<5000&&y==5000')],'ok',null,
+    {dnf:'✔  (x<5000∧y=5000) ∨ (x≥5000∧y=x)  ← VALID INVARIANT'})], -1);
+
+// ═══════════════════════════════════════════
+// TREE DATA per step (layer → [{label,st}])
+// ═══════════════════════════════════════════
+// We build tree state declaratively per step index.
+function treeState(ci) {
+  // Returns {l0,l1,l2,l3,l4} each array of {lbl,st,par}
+  const _ = {l0:[],l1:[],l2:[],l3:[],l4:[]};
+  _.l0 = [{lbl:'Y={[]}',st:'default'}];
+
+  // Layer 1: φ1 candidates (shown from step 3)
+  if (ci >= 3) {
+    const labs = ['y==x+5000','y==5000+(x-5000)&&(…)','y>=5000&&y<=10001&&y==x+5000','y>=5000&&(y==5000||…)','y==x+5000 (short)'];
+    const sts  = ci>=6 ? ['active','active','active','active','active'] : Array(5).fill('pending');
+    _.l1 = labs.map((l,i)=>({lbl:l,st:sts[i],par:0}));
+  }
+
+  // Layer 2: φ2 top-5 (shown from step 10)
+  if (ci >= 10) {
+    const items = [
+      {lbl:'+y==x+5000',par:0},{lbl:'+y==x&&x>=5000',par:1},{lbl:'+y==x',par:1},
+      {lbl:'+y>=5000&&y==x+5000',par:2},{lbl:'+y==x+5000',par:3}
+    ];
+    _.l2 = items.map(it=>({lbl:it.lbl,st:'active',par:it.par}));
+  }
+
+  // Layer 3: φ3 top-5 (shown from step 12)
+  if (ci >= 12) {
+    const show = 3;
+    const items = [{lbl:'+y==x+5000',par:0},{lbl:'+y==x+5000',par:1},{lbl:'+y==5000',par:2}];
+    let sts;
+    if (ci >= 14 && ci <= 15) sts = ['fail','fail','active'];
+    else if (ci >= 16 && ci <= 17) sts = ['fail','fail','active'];
+    else if (ci >= 18) sts = ['fail','fail','active'];
+    else sts = ['active','active','active'];
+    _.l3 = items.slice(0,show).map((it,i)=>({lbl:it.lbl,st:sts[i],par:it.par}));
+    if (ci >= 14 && ci <= 15) _.l3.push({lbl:'+2 pruned',st:'pruned',par:2});
+  }
+
+  // Layer 4: Refinement node (shown from step 19)
+  if (ci >= 19) {
+    const st = ci >= 21 ? 'verified' : 'refined';
+    _.l4 = [{lbl:'φ₁→x<5000&&y==5000',st,par:2}];
+  }
+
+  return _;
+}
+
+// ═══════════════════════════════════════════
+// RENDER
+// ═══════════════════════════════════════════
+let cur=0, atm=null;
+function go(i){if(i>=0&&i<S.length){cur=i;render();}}
+
+function render(){
+  const s=S[cur];
+  document.getElementById('sn').textContent=cur+1;
+  document.getElementById('st').textContent=S.length;
+  document.getElementById('bp').disabled=cur===0;
+  document.getElementById('bn').disabled=cur===S.length-1;
+  const pp=document.getElementById('pp');pp.textContent=s.phase;pp.style.background=s.pc;
+
+  renderAlgo(s.ln);
+  renderPills(s.abr);
+  renderCards(s);
+  drawTree();
+  document.getElementById('nar').innerHTML=s.nar;
+}
+
+function renderAlgo(ln){
+  document.getElementById('algo').innerHTML=A.map(a=>{
+    if(a.n===-1)return'<hr class="sep">';
+    const on=a.n===ln?'on':'';
+    return`<div class="aline ${on}"><span class="ln">${a.n}</span><span class="tx">${a.t}</span></div>`;
+  }).join('');
+}
+
+function renderPills(abr){
+  document.getElementById('pills').innerHTML=PHI.map((p,i)=>{
+    const on=i===abr;
+    return`<span class="ppill" style="color:${p.c};border-color:${p.c};${on?'background:'+p.c+';color:#fff;':''}">${p.lbl}${on?' ◀':''}</span>`;
+  }).join('');
+}
+
+function phiC(id){return(PHI.find(x=>x.id===id)||{c:'#888'}).c;}
+
+function renderCards(s){
+  let h='';
+  if(s.te&&s.te.gen){
+    h+=`<div style="font-size:10px;color:#777;margin-bottom:3px">LLM proposals for <b>${PHI[s.abr]&&PHI[s.abr].id}</b>:</div>`;
+    s.te.gen.forEach(g=>{h+=`<div style="font-size:10px;color:#555;margin-left:8px;font-family:monospace">- ${g}</div>`;});
+    h+='<hr style="border-color:#eee;margin:5px 0">';
+  }
+  s.beam.forEach(c=>{
+    const cls=c.st==='act'?'act':c.st==='ok'?'ok':c.st==='bad'?'bad':c.st==='dim'?'dim':c.st==='ref'?'ref':'';
+    h+=`<div class="card ${cls}"><div class="chdr"><span class="cid">${c.id}</span>`;
+    if(c.sc!==null){const col=c.sc>=8?'#2e7d32':c.sc>=6?'#e65100':'#c62828';h+=`<span class="csc">${c.sc.toFixed(1)}<span class="dot" style="background:${col}"></span></span>`;}
+    if(c.st==='ok')h+=`<span class="ibadge" style="background:#2e7d32">VALID</span>`;
+    if(c.st==='bad')h+=`<span class="ibadge" style="background:#c62828">FAIL</span>`;
+    h+=`</div><div class="irow">`;
+    c.parts.forEach(p=>{
+      let inv=p.inv;
+      if(p.broken)inv=inv.replace(p.broken,`<span class="bk">${p.broken}</span>`);
+      if(p.refined)inv=`<span class="rf">${inv}</span> ★`;
+      h+=`<div><span class="ilbl" style="color:${phiC(p.phi)}">${p.phi}:</span>${inv}</div>`;
+    });
+    h+=`</div>`;
+    if(c.dnf)h+=`<div class="cdnf">${c.dnf}</div>`;
+    if(c.cnote)h+=`<div class="cnote">${c.cnote}</div>`;
+    h+=`</div>`;
+  });
+  document.getElementById('cards').innerHTML=h;
+}
+
+// ═══════════════════════════════════════════
+// TREE CANVAS
+// ═══════════════════════════════════════════
+function drawTree(){
+  const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+  const W=cv.width,H=cv.height;
+  ctx.clearRect(0,0,W,H);
+
+  const ts=treeState(cur);
+  const LY=[30,110,200,295,400];
+  const NW=130,NH=26,RD=5;
+  const layerKey=['l0','l1','l2','l3','l4'];
+  const layerLbl=['root','φ₁','φ₂','φ₃','refine'];
+  const layerClr=['#aaa','#1565c0','#7b1fa2','#2e7d32','#e65100'];
+
+  // Compute x positions
+  const pos={};
+  layerKey.forEach((k,li)=>{
+    const nodes=ts[k]||[];
+    const cnt=nodes.length;
+    const sp=Math.min(140, (W-60)/(cnt+1));
+    const sx=W/2-(cnt-1)*sp/2;
+    nodes.forEach((n,i)=>{pos[`${li}_${i}`]={x:sx+i*sp,y:LY[li]};});
+  });
+
+  // Draw edges
+  layerKey.forEach((k,li)=>{
+    if(li===0)return;
+    (ts[k]||[]).forEach((n,i)=>{
+      const from=pos[`${li-1}_${n.par||0}`];
+      const to=pos[`${li}_${i}`];
+      if(!from||!to)return;
+      const ecol=n.st==='pruned'?'#ddd':n.st==='fail'?'#ef9a9a':n.st==='refined'||n.st==='verified'?layerClr[li]:'#bbb';
+      ctx.beginPath();ctx.moveTo(from.x,from.y+NH/2);ctx.lineTo(to.x,to.y-NH/2);
+      ctx.strokeStyle=ecol;ctx.lineWidth=n.st==='refined'||n.st==='verified'?2.5:1.2;
+      ctx.setLineDash(n.st==='pruned'?[4,4]:[]);ctx.stroke();ctx.setLineDash([]);
+    });
+  });
+
+  // Draw nodes
+  const STYLE={
+    default: {f:'#fff',s:'#ccc',t:'#555'},
+    pending: {f:'#fafafa',s:'#ccc',t:'#aaa'},
+    active:  {f:'#e3f2fd',s:'#1565c0',t:'#1565c0'},
+    pruned:  {f:'#f5f5f5',s:'#ccc',t:'#ccc'},
+    fail:    {f:'#ffebee',s:'#c62828',t:'#c62828'},
+    refined: {f:'#fff3e0',s:'#e65100',t:'#e65100'},
+    verified:{f:'#e8f5e9',s:'#2e7d32',t:'#2e7d32'},
+  };
+
+  layerKey.forEach((k,li)=>{
+    (ts[k]||[]).forEach((n,i)=>{
+      const p=pos[`${li}_${i}`];if(!p)return;
+      const st=STYLE[n.st]||STYLE.default;
+      ctx.fillStyle=st.f;ctx.strokeStyle=st.s;ctx.lineWidth=2;
+      ctx.beginPath();ctx.roundRect(p.x-NW/2,p.y-NH/2,NW,NH,RD);ctx.fill();ctx.stroke();
+      ctx.fillStyle=st.t;ctx.font='bold 10px monospace';ctx.textAlign='center';
+      let txt=n.lbl;if(txt.length>18)txt=txt.substring(0,17)+'…';
+      ctx.fillText(txt,p.x,p.y+4);
+    });
+    // Layer label
+    if(ts[k]&&ts[k].length>0){
+      ctx.fillStyle=layerClr[li];ctx.font='bold 11px sans-serif';ctx.textAlign='left';
+      ctx.fillText(layerLbl[li],5,LY[li]+4);
+    }
+  });
+}
+
+function autoPlay(){
+  const b=document.getElementById('ba');
+  if(atm){clearInterval(atm);atm=null;b.innerHTML='&#9654; Auto';b.style.background='#e65100';return;}
+  b.innerHTML='&#9632; Stop';b.style.background='#c62828';
+  atm=setInterval(()=>{
+    if(cur<S.length-1)go(cur+1);
+    else{clearInterval(atm);atm=null;b.innerHTML='&#9654; Auto';b.style.background='#e65100';}
+  },3200);
+}
+
+document.addEventListener('keydown',e=>{
+  if(e.key==='ArrowRight'||e.key==='ArrowDown')go(cur+1);
+  if(e.key==='ArrowLeft'||e.key==='ArrowUp')go(cur-1);
+});
+
+render();
+</script>
+</body>
+</html>
