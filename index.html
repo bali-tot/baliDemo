@@ -84,6 +84,18 @@
         .nar b { color: #b71c1c; }
         .nar code { background: #eee; padding: 0 3px; border-radius: 3px; font-size: 10px; }
         .nar .ok { color: #2e7d32; font-weight: bold; }
+
+        #tooltip {
+            display: none; position: fixed; z-index: 200;
+            background: #263238; color: #e0e0e0; padding: 10px 14px;
+            border-radius: 6px; font-family: Consolas, monospace; font-size: 12px;
+            line-height: 1.6; max-width: 480px; pointer-events: none;
+            box-shadow: 0 4px 16px rgba(0,0,0,.25); white-space: pre-wrap; word-break: break-all;
+        }
+        #tooltip .tt-phi { font-weight: bold; margin-right: 4px; }
+        #tooltip .tt-phi0 { color: #a5d6a7; }
+        #tooltip .tt-phi1 { color: #90caf9; }
+        #tooltip .tt-phi2 { color: #ce93d8; }
     </style>
 </head>
 <body>
@@ -629,10 +641,43 @@ function renderCards(s){
   document.getElementById('cards').innerHTML=h;
 }
 
+// drawTree is defined below with tooltip support
+
+function autoPlay(){
+  const b=document.getElementById('ba');
+  if(atm){clearInterval(atm);atm=null;b.innerHTML='&#9654; Auto';b.style.background='#e65100';return;}
+  b.innerHTML='&#9632; Stop';b.style.background='#c62828';
+  atm=setInterval(()=>{
+    if(cur<S.length-1)go(cur+1);
+    else{clearInterval(atm);atm=null;b.innerHTML='&#9654; Auto';b.style.background='#e65100';}
+  },3200);
+}
+
+document.addEventListener('keydown',e=>{
+  if(e.key==='ArrowRight'||e.key==='ArrowDown')go(cur+1);
+  if(e.key==='ArrowLeft'||e.key==='ArrowUp')go(cur-1);
+});
+
 // ═══════════════════════════════════════════
-// TREE CANVAS
+// TOOLTIP ON HOVER
 // ═══════════════════════════════════════════
-function drawTree(){
+const tooltip = document.createElement('div');
+tooltip.id = 'tooltip';
+document.body.appendChild(tooltip);
+
+// Store drawn node hitboxes after each render
+let drawnNodes = []; // [{x,y,w,h, fullLabel, parts}]
+
+// Patch drawTree to record node positions
+const _origDrawTree = drawTree;
+drawTree = function() {
+  drawnNodes = [];
+  _origDrawTree();
+};
+
+// Hook into the node drawing loop to collect hitboxes
+// We override drawTree fully to inject hitbox collection
+drawTree = function(){
   const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
   const W=cv.width,H=cv.height;
   ctx.clearRect(0,0,W,H);
@@ -641,28 +686,21 @@ function drawTree(){
   const LY=[35,120,220,330,440];
   const NW=140,NH=36,RD=6;
   const layerKey=['l0','l1','l2','l3','l4'];
-  const layerLbl=['root','φ₀','φ₁','φ₂','refine'];
+  const layerLbl=['root','\u03c6\u2080','\u03c6\u2081','\u03c6\u2082','refine'];
   const layerLblSize=['13px','18px','18px','18px','15px'];
   const layerClr=['#aaa','#2e7d32','#1565c0','#7b1fa2','#e65100'];
 
-  // Build set of (li,ni) pairs on the red path for quick lookup
   const redSet=new Set();
   if(ts.redPath){ts.redPath.forEach(r=>redSet.add(r.li+'_'+r.ni));}
-
-  // Build set of (li,ni) pairs on the verified green path
   const gpSet=new Set();
   if(ts.greenPath){ts.greenPath.forEach(r=>gpSet.add(r.li+'_'+r.ni));}
 
-  // Build set of green-path node indices per layer
-  // greenEdge on layer K means: for every active node in K, trace its ancestry
-  // back to root and mark ALL those edges green
-  const greenPaths={}; // greenPaths[layerIdx] = Set of node indices that are on a green path
+  const greenPaths={};
   layerKey.forEach((k,li)=>{
     if(ts.greenEdge&&ts.greenEdge[k]){
       const curNodes=ts[k]||[];
       curNodes.forEach((n,ni)=>{
         if(n.st!=='active')return;
-        // Trace back from this node to root, marking every layer
         let curLi=li, curNi=ni;
         while(curLi>=0){
           if(!greenPaths[curLi])greenPaths[curLi]=new Set();
@@ -676,7 +714,6 @@ function drawTree(){
     }
   });
 
-  // Compute x positions
   const pos={};
   layerKey.forEach((k,li)=>{
     const nodes=ts[k]||[];
@@ -711,29 +748,18 @@ function drawTree(){
         const to=pos[`${li}_${i}`];
         if(!from||!to)return;
 
-        // Check if this edge is on the verified green path
         const onGP=gpSet.has(li+'_'+i)&&gpSet.has((li-1)+'_'+parIdx);
-        // Check if this edge is on the red path (SelectBest)
         const onRed=redSet.has(li+'_'+i)&&redSet.has((li-1)+'_'+parIdx);
-        // Check if this edge is on a green path (TopK full ancestry)
         const onGreen=greenPaths[li]&&greenPaths[li].has(i)&&greenPaths[li-1]&&greenPaths[li-1].has(parIdx);
 
         let ecol, lw;
-        if(onGP){
-          ecol='#2e7d32'; lw=4;
-        } else if(onRed){
-          ecol='#c62828'; lw=3.5;
-        } else if(onGreen){
-          ecol='#2e7d32'; lw=3;
-        } else if(n.st==='pruned'){
-          ecol='#ddd'; lw=1.2;
-        } else if(n.st==='refRed'){
-          ecol='#c62828'; lw=3;
-        } else if(n.st==='refined'||n.st==='verified'){
-          ecol=layerClr[li]; lw=2.5;
-        } else {
-          ecol='#bbb'; lw=1.2;
-        }
+        if(onGP){ ecol='#2e7d32'; lw=4; }
+        else if(onRed){ ecol='#c62828'; lw=3.5; }
+        else if(onGreen){ ecol='#2e7d32'; lw=3; }
+        else if(n.st==='pruned'){ ecol='#ddd'; lw=1.2; }
+        else if(n.st==='refRed'){ ecol='#c62828'; lw=3; }
+        else if(n.st==='refined'||n.st==='verified'){ ecol=layerClr[li]; lw=2.5; }
+        else { ecol='#bbb'; lw=1.2; }
         ctx.beginPath();ctx.moveTo(from.x,from.y+NH/2);ctx.lineTo(to.x,to.y-NH/2);
         ctx.strokeStyle=ecol;ctx.lineWidth=lw;
         ctx.setLineDash(n.st==='pruned'?[4,4]:[]);ctx.stroke();ctx.setLineDash([]);
@@ -753,6 +779,8 @@ function drawTree(){
     verified:{f:'#e8f5e9',s:'#2e7d32', t:'#2e7d32'},
   };
 
+  drawnNodes = [];
+
   layerKey.forEach((k,li)=>{
     (ts[k]||[]).forEach((n,i)=>{
       const p=pos[`${li}_${i}`];if(!p)return;
@@ -765,7 +793,7 @@ function drawTree(){
       ctx.lineWidth=onGP?3.5:onRed?3:isRefRed?3:2;
       ctx.beginPath();ctx.roundRect(p.x-NW/2,p.y-NH/2,NW,NH,RD);ctx.fill();ctx.stroke();
       ctx.fillStyle=st.t;ctx.font='bold 11px monospace';ctx.textAlign='center';
-      let txt=n.lbl;if(txt.length>19)txt=txt.substring(0,18)+'…';
+      let txt=n.lbl;if(txt.length>19)txt=txt.substring(0,18)+'\u2026';
       ctx.fillText(txt,p.x,p.y+(n.score!=null?-1:5));
       if(n.score!=null){
         const sc=n.score.toFixed(1);
@@ -773,6 +801,20 @@ function drawTree(){
         ctx.font='bold 10px sans-serif';ctx.fillStyle=scCol;
         ctx.fillText('score: '+sc,p.x,p.y+14);
       }
+
+      // Collect hitbox + full label for tooltip
+      // Also look up the beam data to get full invariant parts
+      const beamEntry = S[cur].beam.find(b => {
+        // Match by node label prefix (id)
+        const nodeId = n.lbl.split(':')[0];
+        return b.id === nodeId || b.id === n.lbl;
+      });
+      drawnNodes.push({
+        x: p.x - NW/2, y: p.y - NH/2, w: NW, h: NH,
+        fullLabel: n.lbl,
+        parts: beamEntry ? beamEntry.parts : null,
+        score: n.score
+      });
     });
     if(ts[k]&&ts[k].length>0){
       ctx.fillStyle=layerClr[li];ctx.font='bold '+layerLblSize[li]+' sans-serif';ctx.textAlign='left';
@@ -780,7 +822,6 @@ function drawTree(){
     }
   });
 
-  // SMT check result text at bottom — bigger
   if(ts.smtText){
     const pass=ts.smtText.includes('True');
     const pending=ts.smtText.includes('checking');
@@ -788,21 +829,52 @@ function drawTree(){
     ctx.fillStyle=pending?'#888':pass?'#2e7d32':'#c62828';
     ctx.fillText(ts.smtText, W/2, H-12);
   }
-}
+};
 
-function autoPlay(){
-  const b=document.getElementById('ba');
-  if(atm){clearInterval(atm);atm=null;b.innerHTML='&#9654; Auto';b.style.background='#e65100';return;}
-  b.innerHTML='&#9632; Stop';b.style.background='#c62828';
-  atm=setInterval(()=>{
-    if(cur<S.length-1)go(cur+1);
-    else{clearInterval(atm);atm=null;b.innerHTML='&#9654; Auto';b.style.background='#e65100';}
-  },3200);
-}
+// Mousemove handler for canvas tooltip
+document.getElementById('cv').addEventListener('mousemove', function(e) {
+  const rect = this.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
 
-document.addEventListener('keydown',e=>{
-  if(e.key==='ArrowRight'||e.key==='ArrowDown')go(cur+1);
-  if(e.key==='ArrowLeft'||e.key==='ArrowUp')go(cur-1);
+  let hit = null;
+  for (const n of drawnNodes) {
+    if (mx >= n.x && mx <= n.x + n.w && my >= n.y && my <= n.y + n.h) {
+      hit = n; break;
+    }
+  }
+
+  if (hit) {
+    let html = '';
+    if (hit.parts && hit.parts.length > 0) {
+      hit.parts.forEach(p => {
+        const phiClass = 'tt-' + p.phi;
+        const inv = p.inv.replace(/&&/g, ' && ').replace(/\|\|/g, ' || ');
+        html += '<span class="tt-phi ' + phiClass + '">' + p.phi + ':</span> ' + inv + '\n';
+      });
+    } else {
+      html = hit.fullLabel;
+    }
+    if (hit.score != null) {
+      html += '\nscore: ' + hit.score.toFixed(1);
+    }
+    tooltip.innerHTML = html.trim();
+    tooltip.style.display = 'block';
+    // Position tooltip near cursor
+    let tx = e.clientX + 14;
+    let ty = e.clientY + 14;
+    // Keep tooltip on screen
+    if (tx + 490 > window.innerWidth) tx = e.clientX - 490;
+    if (ty + 120 > window.innerHeight) ty = e.clientY - 120;
+    tooltip.style.left = tx + 'px';
+    tooltip.style.top = ty + 'px';
+  } else {
+    tooltip.style.display = 'none';
+  }
+});
+
+document.getElementById('cv').addEventListener('mouseleave', function() {
+  tooltip.style.display = 'none';
 });
 
 render();
